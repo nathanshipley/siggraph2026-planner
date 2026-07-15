@@ -1,8 +1,8 @@
 # SIGGRAPH 2026 Session Planner (unofficial)
 
-### ⬇️ Download: [**planner.html**](planner.html)
+### ⬇️ Download: [**planner.html**](https://github.com/nathanshipley/siggraph2026-planner/releases/latest/download/planner.html) — one click, one file, that's the whole app
 
-*(that link opens a GitHub page — click the **"Download raw file"** ⬇ button there. The one file is the whole app.)*
+### 🚀 Or use it live in your browser: [**nathanshipley.github.io/siggraph2026-planner/planner.html**](https://nathanshipley.github.io/siggraph2026-planner/planner.html)
 
 A single-file, offline **personal session planner** for [SIGGRAPH 2026](https://s2026.siggraph.org/)
 (Los Angeles, 19–23 July 2026), plus the full conference schedule as CSV.
@@ -12,11 +12,18 @@ Two things this has that the official schedule site doesn't:
 - **📅 Time view** — your picked sessions on a five-day time-bar calendar, with overlaps flagged in red
 - **🔎 Full-text search** — instantly search every session title *and* abstract at once
 
+**Just want the schedule for your own agent?** Here's a CSV:
+[`siggraph2026_schedule_with_descriptions.csv`](data/siggraph2026_schedule_with_descriptions.csv)
+([raw](https://raw.githubusercontent.com/nathanshipley/siggraph2026-planner/main/data/siggraph2026_schedule_with_descriptions.csv))
+
+![My Schedule calendar view — conflicts get red outlines](docs/screenshot-calendar.png)
+
 ## Quick start
 
-1. Download [`planner.html`](planner.html) (link above).
-2. Double-click it — it opens in your browser. No install, no server, works offline.
-3. Check sessions to build **My Schedule**, spot conflicts on the calendar, and export
+1. [Download `planner.html`](https://github.com/nathanshipley/siggraph2026-planner/releases/latest/download/planner.html)
+   and double-click it — or just open the [live version](https://nathanshipley.github.io/siggraph2026-planner/planner.html).
+   No install, no server; the downloaded file works offline.
+2. Check sessions to build **My Schedule**, spot conflicts on the calendar, and export
    your picks to Google Calendar (`.ics`) when you're happy.
 
 Your picks are saved in your browser (localStorage) and survive reloads.
@@ -30,8 +37,6 @@ More of what it does:
 - **Export to Google Calendar**: one click generates an `.ics` of your picks with correct
   `America/Los_Angeles` times (import via Google Calendar → Settings → Import & export).
 - Light and dark mode.
-
-![My Schedule calendar view — conflicts get red outlines](docs/screenshot-calendar.png)
 
 ![Browse view — filter by day, track, and registration level; expand descriptions inline](docs/screenshot-browse.png)
 
