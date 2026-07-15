@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGGRAPH 2026 Planner</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg-panel: #171a23;
+    --bg-card: #1c202b;
+    --bg-card-hover: #222736;
+    --border: #2b3040;
+    --text: #e8eaf0;
+    --text-dim: #9aa1b5;
+    --text-faint: #6b7288;
+    --accent: #e4405f;
+    --accent-soft: rgba(228, 64, 95, 0.12);
+    --green: #3ecf8e;
+    --amber: #f5b83d;
+    --conflict: #ff4d4d;
+    --radius: 8px;
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f5f8;
+    --bg-panel: #ffffff;
+    --bg-card: #ffffff;
+    --bg-card-hover: #eef0f5;
+    --border: #d9dce5;
+    --text: #1d2233;
+    --text-dim: #4e5569;
+    --text-faint: #878da1;
+    --accent: #d63354;
+    --accent-soft: rgba(214, 51, 84, 0.10);
+    --green: #158556;
+    --amber: #9a6a06;
+    --conflict: #d92d2d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scrollbar-gutter: stable; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  a { color: #6ab7ff; }
+
+  /* ---------- Header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 20px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 17px; font-weight: 700; letter-spacing: .2px; white-space: nowrap; }
+  header h1 span { color: var(--accent); }
+  .tabs { display: flex; gap: 4px; }
+  .tab {
+    padding: 7px 16px; border-radius: 6px; border: 1px solid transparent;
+    background: transparent; color: var(--text-dim);
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .tab .badge {
+    display: inline-block; min-width: 20px; padding: 1px 6px; margin-left: 6px;
+    border-radius: 10px; background: var(--accent); color: #fff; font-size: 11px; text-align: center;
+  }
+  .spacer { flex: 1; }
+  .btn {
+    padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .btn:hover { background: var(--bg-card-hover); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.danger:hover { border-color: var(--conflict); color: var(--conflict); }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 16px 20px 60px; }
+
+  /* ---------- Browse toolbar ---------- */
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 12px 0;
+  }
+  .day-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .pill:hover { color: var(--text); }
+  .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  select, input[type="search"] {
+    padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-card); color: var(--text); font-size: 13px;
+  }
+  select { max-width: 260px; }
+  input[type="search"] { width: 300px; }
+  input[type="search"]::placeholder { color: var(--text-faint); }
+  .toggle-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); cursor: pointer; user-select: none; }
+  .result-count { font-size: 13px; color: var(--text-faint); margin-left: auto; }
+
+  /* ---------- Session cards ---------- */
+  .session-list { display: flex; flex-direction: column; gap: 8px; }
+  .day-header {
+    font-size: 15px; font-weight: 700; color: var(--text);
+    padding: 18px 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px;
+    position: sticky; top: 57px; background: var(--bg); z-index: 10;
+  }
+  .card {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .card:hover { background: var(--bg-card-hover); }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card input[type="checkbox"] {
+    width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
+  }
+  .card-body { flex: 1; min-width: 0; }
+  .card-title { font-size: 14px; font-weight: 650; }
+  .card-meta { margin-top: 3px; font-size: 12.5px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .card-meta .time { color: var(--amber); font-weight: 600; }
+  .track-badge {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; border: 1px solid;
+    color: hsl(var(--h), 70%, 72%);
+    border-color: hsl(var(--h), 50%, 40%);
+    background: hsla(var(--h), 60%, 50%, .12);
+  }
+  :root[data-theme="light"] .track-badge {
+    color: hsl(var(--h), 80%, 28%);
+    border-color: hsl(var(--h), 45%, 60%);
+    background: hsla(var(--h), 60%, 45%, .08);
+  }
+  .rc-note { font-size: 11px; color: var(--text-faint); }
+  .group-note {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+    color: var(--amber); border: 1px solid var(--amber);
+  }
+  .part-of { margin-top: 4px; font-size: 12px; color: var(--text-faint); font-style: italic; }
+  .kids { margin-top: 8px; }
+  .kids b { font-size: 12px; color: var(--text); }
+  .kid-row { padding: 2px 0 2px 12px; font-size: 12.5px; color: var(--text-dim); }
+  .kid-row .time { color: var(--amber); font-weight: 600; }
+  .card-speakers { margin-top: 4px; font-size: 12px; color: var(--text-faint); }
+  .card details { margin-top: 6px; }
+  .card summary {
+    font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none;
+    list-style: none; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .card summary::-webkit-details-marker { display: none; }
+  .card summary::before { content: "▸"; font-size: 10px; transition: transform .12s; }
+  .card details[open] summary::before { transform: rotate(90deg); }
+  .card summary:hover { color: var(--text); }
+  .desc { margin-top: 6px; font-size: 13px; color: var(--text-dim); white-space: pre-wrap; max-width: 900px; }
+  .desc .kw { margin-top: 6px; font-size: 12px; color: var(--text-faint); }
+  .desc a { font-size: 12px; }
+  .empty-note { padding: 40px; text-align: center; color: var(--text-faint); }
+
+  /* ---------- Calendar ---------- */
+  .cal-legend { display: flex; gap: 18px; align-items: center; padding: 8px 0 14px; font-size: 12.5px; color: var(--text-dim); flex-wrap: wrap; }
+  .legend-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  .cal-wrap { overflow-x: auto; }
+  .calendar {
+    display: grid;
+    grid-template-columns: 52px repeat(5, minmax(150px, 1fr));
+    min-width: 860px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-panel);
+    overflow: hidden;
+  }
+  .cal-corner, .cal-day-head {
+    padding: 10px 8px; text-align: center; font-weight: 700; font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+  .cal-day-head { border-left: 1px solid var(--border); }
+  .cal-day-head .sub { display: block; font-size: 11px; font-weight: 500; color: var(--text-faint); }
+  .cal-gutter { position: relative; }
+  .cal-gutter .hour-label {
+    position: absolute; right: 8px; transform: translateY(-7px);
+    font-size: 10.5px; color: var(--text-faint);
+  }
+  .cal-col {
+    position: relative; border-left: 1px solid var(--border);
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0, transparent calc(var(--hour-px) - 1px),
+      var(--border) calc(var(--hour-px) - 1px), var(--border) var(--hour-px)
+    );
+  }
+  .cal-block {
+    position: absolute;
+    border-radius: 5px;
+    padding: 3px 6px;
+    font-size: 10.5px; line-height: 1.25;
+    overflow: hidden; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.18);
+    border-left-width: 3px;
+    color: #fff;
+    background: hsl(var(--h), 45%, 30%);
+    border-left-color: hsl(var(--h), 70%, 60%);
+  }
+  :root[data-theme="light"] .cal-block {
+    background: hsl(var(--h), 50%, 42%);
+    border-color: rgba(0,0,0,.15);
+    border-left-color: hsl(var(--h), 65%, 28%);
+  }
+  .cal-block:hover { z-index: 20; filter: brightness(1.15); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+  .cal-block .b-time { font-weight: 700; opacity: .95; white-space: nowrap; }
+  .cal-block .b-title { font-weight: 600; }
+  .cal-block.conflict {
+    border: 2px solid var(--conflict);
+    box-shadow: 0 0 0 1px var(--conflict), 0 0 10px rgba(255, 77, 77, .35);
+  }
+  .cal-block.conflict::after {
+    content: "⚠"; position: absolute; top: 1px; right: 4px; font-size: 10px; color: var(--conflict);
+    text-shadow: 0 0 2px #000;
+  }
+  .unscheduled { margin-top: 18px; }
+  .unscheduled h3 { font-size: 14px; color: var(--amber); margin-bottom: 8px; }
+  .conflict-summary { margin: 14px 0 4px; font-size: 13px; }
+  .conflict-summary .warn { color: var(--conflict); font-weight: 600; }
+  .conflict-summary .ok { color: var(--green); }
+
+  /* ---------- Modal ---------- */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,.55);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+    max-width: 640px; width: 100%; max-height: 80vh; overflow-y: auto;
+    padding: 20px 22px;
+  }
+  .modal h2 { font-size: 16px; margin-bottom: 8px; padding-right: 30px; }
+  .modal .m-meta { font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+  .modal .m-meta b { color: var(--amber); }
+  .modal .desc { margin-top: 10px; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .modal-close {
+    position: absolute; top: 12px; right: 16px;
+    background: none; border: none; color: var(--text-dim); font-size: 22px; cursor: pointer;
+  }
+  .modal-box { position: relative; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 18px; font-size: 13px; z-index: 200;
+    box-shadow: 0 6px 24px rgba(0,0,0,.5);
+    opacity: 0; transition: opacity .25s; pointer-events: none;
+    max-width: 90vw;
+  }
+  .toast.show { opacity: 1; }
+
+  .hint { font-size: 12px; color: var(--text-faint); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SIGGRAPH <span>2026</span> Planner</h1>
+  <nav class="tabs">
+    <button class="tab active" id="tab-browse">Browse</button>
+    <button class="tab" id="tab-schedule">My Schedule<span class="badge" id="sel-count">0</span></button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn" id="btn-theme" title="Toggle light / dark mode">☀️</button>
+  <button class="btn primary" id="btn-export" title="Download an .ics file — import via Google Calendar → Settings → Import &amp; export">📅 Export to Google Calendar (.ics)</button>
+  <button class="btn danger" id="btn-clear" title="Uncheck every session">Clear all</button>
+</header>
+
+<main>
+  <!-- ============ BROWSE VIEW ============ -->
+  <section id="view-browse">
+    <div class="toolbar">
+      <div class="day-pills" id="day-pills"></div>
+      <select id="track-filter"><option value="">All tracks</option></select>
+      <select id="rc-filter"><option value="">All registration categories</option></select>
+      <input type="search" id="search" placeholder="Search title &amp; description…">
+      <label class="toggle-label"><input type="checkbox" id="only-selected"> My picks only</label>
+      <span class="result-count" id="result-count"></span>
+    </div>
+    <div class="session-list" id="session-list"></div>
+  </section>
+
+  <!-- ============ SCHEDULE VIEW ============ -->
+  <section id="view-schedule" style="display:none">
+    <div class="cal-legend">
+      <span><span class="legend-swatch" style="background:var(--conflict)"></span>Red outline = time conflict</span>
+      <span class="hint">Click a block for details / to remove it. Colors group by program track.</span>
+    </div>
+    <div id="conflict-summary" class="conflict-summary"></div>
+    <div class="cal-wrap">
+      <div class="calendar" id="calendar"></div>
+    </div>
+    <div class="unscheduled" id="unscheduled"></div>
+    <p class="hint" style="margin-top:20px">
+      Export: click <b>Export to Google Calendar</b> above, then in Google Calendar go to
+      <b>Settings → Import &amp; export → Import</b> and choose the downloaded <code>.ics</code> file.
+      All times are Pacific (America/Los_Angeles).
+    </p>
+  </section>
+</main>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal modal-box" id="modal">
+    <button class="modal-close" id="modal-close">×</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script id="session-data" type="application/json">__DATA_JSON__</script>
+<script id="seed-data" type="application/json">__SEED_JSON__</script>
+
+<script>
+"use strict";
+
+/* ============================== Data ============================== */
+const SESSIONS = JSON.parse(document.getElementById("session-data").textContent);
+const SEED_IDS = JSON.parse(document.getElementById("seed-data").textContent);
+const BY_ID = new Map(SESSIONS.map(s => [s.id, s]));
+
+const DAYS = [
+  { date: "2026-07-19", short: "Sun", label: "Sunday, 19 July" },
+  { date: "2026-07-20", short: "Mon", label: "Monday, 20 July" },
+  { date: "2026-07-21", short: "Tue", label: "Tuesday, 21 July" },
+  { date: "2026-07-22", short: "Wed", label: "Wednesday, 22 July" },
+  { date: "2026-07-23", short: "Thu", label: "Thursday, 23 July" },
+];
+const DAY_INDEX = new Map(DAYS.map((d, i) => [d.date, i]));
+
+// Precompute lowercase search text (title + description) and registration-category tokens
+for (const s of SESSIONS) {
+  s._q = (s.title + " " + s.desc).toLowerCase();
+  s._rc = new Set(s.rc.split(";").map(t => t.trim()).filter(Boolean));
+}
+
+// Sort master list: day, then start time (missing times last), then title
+SESSIONS.sort((a, b) => {
+  const da = DAY_INDEX.has(a.date) ? DAY_INDEX.get(a.date) : 99;
+  const db = DAY_INDEX.has(b.date) ? DAY_INDEX.get(b.date) : 99;
+  if (da !== db) return da - db;
+  const sa = a.sm == null ? 1e9 : a.sm, sb = b.sm == null ? 1e9 : b.sm;
+  if (sa !== sb) return sa - sb;
+  return a.title.localeCompare(b.title);
+});
+
+/* ============================== Selections (localStorage) ============================== */
+const LS_KEY = "siggraph2026.planner.selections.v1";
+let selections;
+(function initSelections() {
+  const raw = localStorage.getItem(LS_KEY);
+  if (raw == null) {
+    selections = new Set(SEED_IDS.filter(id => BY_ID.has(id)));
+    persist();
+  } else {
+    try { selections = new Set(JSON.parse(raw).filter(id => BY_ID.has(id))); }
+    catch { selections = new Set(); }
+  }
+})();
+function persist() { localStorage.setItem(LS_KEY, JSON.stringify([...selections])); }
+
+function setSelected(id, on) {
+  if (on) selections.add(id); else selections.delete(id);
+  persist();
+  updateSelCount();
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (card) {
+    card.classList.toggle("selected", on);
+    const cb = card.querySelector("input[type=checkbox]");
+    if (cb) cb.checked = on;
+  }
+  if (state.view === "schedule") renderCalendar();
+  if (filterState.onlySelected && !on) renderList();
+}
+function updateSelCount() {
+  document.getElementById("sel-count").textContent = selections.size;
+}
+
+/* ============================== State ============================== */
+const state = { view: "browse" };
+const filterState = { day: "", track: "", rc: "", q: "", onlySelected: false };
+
+/* ============================== Utilities ============================== */
+function esc(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function fmtTime(s) {
+  return (s.st && s.et) ? `${s.st}–${s.et}` : (s.st ? s.st : "time TBD");
+}
+// Deterministic color per track
+const TRACK_HUES = new Map();
+function trackHue(track) {
+  if (!TRACK_HUES.has(track)) {
+    let h = 0;
+    for (let i = 0; i < track.length; i++) h = (h * 31 + track.charCodeAt(i)) >>> 0;
+    TRACK_HUES.set(track, h % 360);
+  }
+  return TRACK_HUES.get(track);
+}
+function trackBadge(track) {
+  return `<span class="track-badge" style="--h:${trackHue(track)}">${esc(track)}</span>`;
+}
+let toastTimer;
+function toast(msg, ms = 3500) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+}
+
+/* ============================== Browse view ============================== */
+function buildToolbar() {
+  // Day pills
+  const pills = [`<button class="pill active" data-day="">All days</button>`];
+  for (const d of DAYS) {
+    const num = d.date.slice(-2).replace(/^0/, "");
+    pills.push(`<button class="pill" data-day="${d.date}">${d.short} ${num}</button>`);
+  }
+  const pillWrap = document.getElementById("day-pills");
+  pillWrap.innerHTML = pills.join("");
+  pillWrap.addEventListener("click", e => {
+    const btn = e.target.closest(".pill");
+    if (!btn) return;
+    filterState.day = btn.dataset.day;
+    pillWrap.querySelectorAll(".pill").forEach(p => p.classList.toggle("active", p === btn));
+    renderList();
+  });
+
+  // Track dropdown with counts
+  const counts = new Map();
+  for (const s of SESSIONS) counts.set(s.track, (counts.get(s.track) || 0) + 1);
+  const sel = document.getElementById("track-filter");
+  const opts = [...counts.keys()].sort((a, b) => a.localeCompare(b))
+    .map(t => `<option value="${esc(t)}">${esc(t)} (${counts.get(t)})</option>`);
+  sel.insertAdjacentHTML("beforeend", opts.join(""));
+  sel.addEventListener("change", () => { filterState.track = sel.value; renderList(); });
+
+  // Registration category dropdown (badge tiers, in access order like the official site)
+  const RC_ORDER = ["Full Conference Supporter", "Full Conference", "Experience", "Discover"];
+  const rcCounts = new Map();
+  for (const s of SESSIONS)
+    for (const t of s._rc) rcCounts.set(t, (rcCounts.get(t) || 0) + 1);
+  const rcSel = document.getElementById("rc-filter");
+  const rcTokens = [...rcCounts.keys()].sort((a, b) => {
+    const ia = RC_ORDER.indexOf(a), ib = RC_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+  });
+  rcSel.insertAdjacentHTML("beforeend",
+    rcTokens.map(t => `<option value="${esc(t)}">${esc(t)} (${rcCounts.get(t)})</option>`).join(""));
+  rcSel.addEventListener("change", () => { filterState.rc = rcSel.value; renderList(); });
+
+  // Search (debounced)
+  let deb;
+  const search = document.getElementById("search");
+  search.addEventListener("input", () => {
+    clearTimeout(deb);
+    deb = setTimeout(() => { filterState.q = search.value.trim().toLowerCase(); renderList(); }, 150);
+  });
+
+  document.getElementById("only-selected").addEventListener("change", e => {
+    filterState.onlySelected = e.target.checked;
+    renderList();
+  });
+}
+
+function matchesFilters(s) {
+  if (filterState.day && s.date !== filterState.day) return false;
+  if (filterState.track && s.track !== filterState.track) return false;
+  if (filterState.rc && !s._rc.has(filterState.rc)) return false;
+  if (filterState.onlySelected && !selections.has(s.id)) return false;
+  if (filterState.q && !s._q.includes(filterState.q)) return false;
+  return true;
+}
+
+function kidListHTML(s) {
+  const kids = (s.kids || []).map(id => BY_ID.get(id)).filter(Boolean);
+  if (!kids.length) return "";
+  return `<div class="kids"><b>Presentations in this session:</b>` +
+    kids.map(k => `<div class="kid-row"><span class="time">${esc(k.st)}–${esc(k.et)}</span> ${esc(k.title)}</div>`).join("") +
+    `</div>`;
+}
+function partOfHTML(s) {
+  if (!s.pid) return "";
+  const p = BY_ID.get(s.pid);
+  return p ? `<div class="part-of">Part of session: ${esc(p.title)} (${esc(fmtTime(p))})</div>` : "";
+}
+function cardHTML(s) {
+  const checked = selections.has(s.id);
+  const loc = s.loc ? esc(s.loc) : `<i>location TBD</i>`;
+  const speakers = s.sp ? `<div class="card-speakers">👤 ${esc(s.sp)}</div>` : "";
+  const rc = s.rc ? `<span class="rc-note">${esc(s.rc)}</span>` : "";
+  const groupNote = s.kids ? `<span class="group-note">▤ session · ${s.kids.length} presentations</span>` : "";
+  let detailInner = "";
+  if (s.desc) detailInner += `<div>${esc(s.desc)}</div>`;
+  detailInner += kidListHTML(s);
+  if (s.kw) detailInner += `<div class="kw">🏷 ${esc(s.kw)}</div>`;
+  if (s.url) detailInner += `<div style="margin-top:6px"><a href="${esc(s.url)}" target="_blank" rel="noopener">Session page ↗</a></div>`;
+  const details = detailInner
+    ? `<details><summary>Details</summary><div class="desc">${detailInner}</div></details>`
+    : "";
+  return `<div class="card${checked ? " selected" : ""}" data-id="${s.id}">
+    <input type="checkbox" ${checked ? "checked" : ""} aria-label="Add to my schedule">
+    <div class="card-body">
+      <div class="card-title">${esc(s.title)}</div>
+      <div class="card-meta">
+        <span class="time">${esc(fmtTime(s))}</span>
+        <span>📍 ${loc}</span>
+        ${trackBadge(s.track)}
+        ${groupNote}
+        ${rc}
+      </div>
+      ${partOfHTML(s)}
+      ${speakers}
+      ${details}
+    </div>
+  </div>`;
+}
+
+function renderList() {
+  const list = document.getElementById("session-list");
+  const rows = SESSIONS.filter(matchesFilters);
+  document.getElementById("result-count").textContent =
+    `${rows.length} session${rows.length === 1 ? "" : "s"}`;
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty-note">No sessions match these filters.</div>`;
+    return;
+  }
+  const parts = [];
+  let lastDay = null;
+  for (const s of rows) {
+    if (s.day !== lastDay) {
+      parts.push(`<div class="day-header">${esc(s.day)}</div>`);
+      lastDay = s.day;
+    }
+    parts.push(cardHTML(s));
+  }
+  list.innerHTML = parts.join("");
+}
+
+// Checkbox delegation
+document.getElementById("session-list").addEventListener("change", e => {
+  if (e.target.matches("input[type=checkbox]")) {
+    const card = e.target.closest(".card");
+    if (card) setSelected(card.dataset.id, e.target.checked);
+  }
+});
+
+/* ============================== Calendar view ============================== */
+const PX_PER_MIN = 0.8;      // 48px per hour
+const HOUR_PX = 60 * PX_PER_MIN;
+
+function overlaps(a, b) { return a.sm < b.em && b.sm < a.em; }
+
+// Assign side-by-side columns to overlapping events. Returns events annotated
+// with _col/_cols/_conflict.
+function layoutDay(events) {
+  const evs = [...events].sort((a, b) => a.sm - b.sm || a.em - b.em);
+  // pairwise conflict flags — a session-group header overlapping its own
+  // sub-presentations is nesting, not a clash
+  const related = (a, b) => a.pid === b.id || b.pid === a.id;
+  for (const e of evs) e._conflict = false;
+  for (let i = 0; i < evs.length; i++)
+    for (let j = i + 1; j < evs.length; j++)
+      if (overlaps(evs[i], evs[j]) && !related(evs[i], evs[j]))
+        evs[i]._conflict = evs[j]._conflict = true;
+  // cluster into transitive-overlap groups, then column-pack each cluster
+  let cluster = [], clusterEnd = -1;
+  const flush = () => {
+    if (!cluster.length) return;
+    const colEnds = [];
+    for (const e of cluster) {
+      let col = colEnds.findIndex(end => end <= e.sm);
+      if (col === -1) { col = colEnds.length; colEnds.push(0); }
+      colEnds[col] = e.em;
+      e._col = col;
+    }
+    for (const e of cluster) e._cols = colEnds.length;
+    cluster = [];
+  };
+  for (const e of evs) {
+    if (e.sm >= clusterEnd) flush();
+    cluster.push(e);
+    clusterEnd = Math.max(clusterEnd, e.em);
+  }
+  flush();
+  return evs;
+}
+
+function renderCalendar() {
+  const cal = document.getElementById("calendar");
+  cal.style.setProperty("--hour-px", HOUR_PX + "px");
+
+  const selected = [...selections].map(id => BY_ID.get(id)).filter(Boolean);
+  const timed = selected.filter(s => s.date && s.sm != null && s.em != null && s.em > s.sm);
+  const untimed = selected.filter(s => !timed.includes(s));
+
+  // Axis: 8am–9pm by default, extended to whole hours to fit any picked session
+  let CAL_START = 8 * 60, CAL_END = 21 * 60;
+  for (const s of timed) {
+    CAL_START = Math.min(CAL_START, Math.floor(s.sm / 60) * 60);
+    CAL_END = Math.max(CAL_END, Math.ceil(s.em / 60) * 60);
+  }
+  CAL_START = Math.max(0, CAL_START);
+  CAL_END = Math.min(24 * 60, CAL_END);
+  const CAL_H = (CAL_END - CAL_START) * PX_PER_MIN;
+
+  // header row
+  const parts = [`<div class="cal-corner"></div>`];
+  for (const d of DAYS) {
+    const n = timed.filter(s => s.date === d.date).length;
+    parts.push(`<div class="cal-day-head">${d.short}<span class="sub">${d.label.split(", ")[1]}${n ? " · " + n + " picked" : ""}</span></div>`);
+  }
+
+  // time gutter
+  let gutter = `<div class="cal-gutter" style="height:${CAL_H}px">`;
+  for (let m = CAL_START; m <= CAL_END; m += 60) {
+    const h12 = ((m / 60 + 11) % 12) + 1;
+    const ap = (m < 720 || m >= 1440) ? "am" : "pm";
+    gutter += `<div class="hour-label" style="top:${(m - CAL_START) * PX_PER_MIN}px">${h12}${ap}</div>`;
+  }
+  gutter += `</div>`;
+  parts.push(gutter);
+
+  let conflictCount = 0;
+  for (const d of DAYS) {
+    const dayEvents = layoutDay(timed.filter(s => s.date === d.date));
+    let col = `<div class="cal-col" style="height:${CAL_H}px">`;
+    for (const s of dayEvents) {
+      const smC = Math.max(s.sm, CAL_START), emC = Math.min(s.em, CAL_END);
+      if (emC <= smC) continue;
+      const top = (smC - CAL_START) * PX_PER_MIN;
+      const height = Math.max((emC - smC) * PX_PER_MIN, 16);
+      const wPct = 100 / s._cols;
+      if (s._conflict) conflictCount++;
+      col += `<div class="cal-block${s._conflict ? " conflict" : ""}" data-id="${s.id}"
+        style="top:${top}px;height:${height - 2}px;left:${s._col * wPct}%;width:calc(${wPct}% - 3px);--h:${trackHue(s.track)}"
+        title="${esc(s.title)}&#10;${esc(fmtTime(s))}${s.loc ? "&#10;" + esc(s.loc) : ""}">
+        <span class="b-time">${esc(s.st)}</span> <span class="b-title">${esc(s.title)}</span>
+      </div>`;
+    }
+    col += `</div>`;
+    parts.push(col);
+  }
+  cal.innerHTML = parts.join("");
+
+  // conflict summary
+  const cs = document.getElementById("conflict-summary");
+  if (!timed.length) {
+    cs.innerHTML = `<span class="hint">Nothing scheduled yet — check sessions in the Browse tab.</span>`;
+  } else if (conflictCount) {
+    cs.innerHTML = `<span class="warn">⚠ ${conflictCount} session${conflictCount > 1 ? "s" : ""} with time conflicts</span> <span class="hint">— shown side-by-side with red outlines</span>`;
+  } else {
+    cs.innerHTML = `<span class="ok">✓ No time conflicts in your schedule</span>`;
+  }
+
+  // unscheduled picks
+  const un = document.getElementById("unscheduled");
+  un.innerHTML = untimed.length
+    ? `<h3>Picks without a parseable date/time (${untimed.length})</h3>` +
+      untimed.map(s => `<div class="card" data-id="${s.id}" style="margin-bottom:6px">
+          <div class="card-body">
+            <div class="card-title">${esc(s.title)}</div>
+            <div class="card-meta"><span>${esc(s.day || "day TBD")}</span><span class="time">${esc(fmtTime(s))}</span>${trackBadge(s.track)}</div>
+          </div>
+        </div>`).join("")
+    : "";
+}
+
+// Block click → modal
+document.getElementById("calendar").addEventListener("click", e => {
+  const block = e.target.closest(".cal-block");
+  if (block) openModal(block.dataset.id);
+});
+
+/* ============================== Modal ============================== */
+const overlay = document.getElementById("modal-overlay");
+function openModal(id) {
+  const s = BY_ID.get(id);
+  if (!s) return;
+  const mc = document.getElementById("modal-content");
+  mc.innerHTML = `
+    <h2>${esc(s.title)}</h2>
+    <div class="m-meta">${esc(s.day)} · <b>${esc(fmtTime(s))}</b></div>
+    <div class="m-meta">📍 ${s.loc ? esc(s.loc) : "<i>location TBD</i>"}</div>
+    <div class="m-meta">${trackBadge(s.track)} ${s.kids ? `<span class="group-note">▤ session · ${s.kids.length} presentations</span>` : ""} ${s.rc ? `<span class="rc-note">${esc(s.rc)}</span>` : ""}</div>
+    ${partOfHTML(s)}
+    ${s.sp ? `<div class="m-meta">👤 ${esc(s.sp)}</div>` : ""}
+    ${s.desc ? `<div class="desc">${esc(s.desc)}</div>` : ""}
+    ${kidListHTML(s)}
+    ${s.kw ? `<div class="m-meta" style="margin-top:8px">🏷 ${esc(s.kw)}</div>` : ""}
+    <div class="modal-actions">
+      ${s.url ? `<a class="btn" href="${esc(s.url)}" target="_blank" rel="noopener">Session page ↗</a>` : ""}
+      <button class="btn danger" id="modal-remove" data-id="${s.id}">Remove from schedule</button>
+    </div>`;
+  overlay.classList.add("open");
+}
+function closeModal() { overlay.classList.remove("open"); }
+document.getElementById("modal-close").addEventListener("click", closeModal);
+overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+document.getElementById("modal-content").addEventListener("click", e => {
+  const btn = e.target.closest("#modal-remove");
+  if (btn) { setSelected(btn.dataset.id, false); closeModal(); }
+});
+
+/* ============================== ICS export ============================== */
+function icsEscape(s) {
+  return String(s ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+function foldLine(line) {
+  // RFC 5545: fold at 75 octets; conservative 73-char chunks keeps us safe.
+  if (line.length <= 73) return line;
+  const out = [];
+  let i = 0;
+  while (i < line.length) {
+    out.push((i === 0 ? "" : " ") + line.slice(i, i + 73));
+    i += 73;
+  }
+  return out.join("\r\n");
+}
+function icsDateTime(dateISO, minutes) {
+  const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+  const mm = String(minutes % 60).padStart(2, "0");
+  return dateISO.replace(/-/g, "") + "T" + hh + mm + "00";
+}
+function buildICS(sessions) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const L = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//SIGGRAPH 2026 Personal Planner//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "X-WR-CALNAME:SIGGRAPH 2026 — My Schedule",
+    "X-WR-TIMEZONE:America/Los_Angeles",
+    "BEGIN:VTIMEZONE",
+    "TZID:America/Los_Angeles",
+    "BEGIN:DAYLIGHT",
+    "TZOFFSETFROM:-0800",
+    "TZOFFSETTO:-0700",
+    "TZNAME:PDT",
+    "DTSTART:19700308T020000",
+    "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+    "END:DAYLIGHT",
+    "BEGIN:STANDARD",
+    "TZOFFSETFROM:-0700",
+    "TZOFFSETTO:-0800",
+    "TZNAME:PST",
+    "DTSTART:19701101T020000",
+    "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU",
+    "END:STANDARD",
+    "END:VTIMEZONE",
+  ];
+  for (const s of sessions) {
+    const descParts = [];
+    if (s.url) descParts.push(s.url);
+    if (s.desc) descParts.push(s.desc);
+    if (s.kids) {
+      const kids = s.kids.map(id => BY_ID.get(id)).filter(Boolean);
+      descParts.push("Presentations:\n" + kids.map(k => `• ${k.st} ${k.title}`).join("\n"));
+    }
+    if (s.sp) descParts.push("Speakers: " + s.sp);
+    L.push("BEGIN:VEVENT");
+    L.push("UID:" + s.id + "@siggraph2026-planner");
+    L.push("DTSTAMP:" + stamp);
+    L.push("DTSTART;TZID=America/Los_Angeles:" + icsDateTime(s.date, s.sm));
+    L.push("DTEND;TZID=America/Los_Angeles:" + icsDateTime(s.date, s.em));
+    L.push("SUMMARY:" + icsEscape(s.title));
+    if (s.loc) L.push("LOCATION:" + icsEscape(s.loc));
+    if (descParts.length) L.push("DESCRIPTION:" + icsEscape(descParts.join("\n\n")));
+    if (s.url) L.push("URL:" + icsEscape(s.url));
+    if (s.track) L.push("CATEGORIES:" + icsEscape(s.track));
+    L.push("END:VEVENT");
+  }
+  L.push("END:VCALENDAR");
+  return L.map(foldLine).join("\r\n") + "\r\n";
+}
+
+document.getElementById("btn-export").addEventListener("click", () => {
+  const selected = [...selections].map(id => BY_ID.get(id)).filter(Boolean);
+  const exportable = selected.filter(s => s.date && s.sm != null && s.em != null && s.em > s.sm);
+  if (!exportable.length) {
+    toast("No selected sessions with valid dates/times to export.");
+    return;
+  }
+  const ics = buildICS(exportable);
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "siggraph2026-my-schedule.ics";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+  const skipped = selected.length - exportable.length;
+  toast(`Exported ${exportable.length} session${exportable.length > 1 ? "s" : ""} to .ics` +
+    (skipped ? ` (${skipped} skipped — missing date/time)` : "") +
+    `. Import via Google Calendar → Settings → Import & export.`, 6000);
+});
+
+/* ============================== Clear all ============================== */
+document.getElementById("btn-clear").addEventListener("click", () => {
+  if (!selections.size) return;
+  if (!confirm(`Uncheck all ${selections.size} selected sessions?`)) return;
+  selections.clear();
+  persist();
+  updateSelCount();
+  renderList();
+  if (state.view === "schedule") renderCalendar();
+});
+
+/* ============================== Tabs ============================== */
+function switchView(view) {
+  state.view = view;
+  document.getElementById("tab-browse").classList.toggle("active", view === "browse");
+  document.getElementById("tab-schedule").classList.toggle("active", view === "schedule");
+  document.getElementById("view-browse").style.display = view === "browse" ? "" : "none";
+  document.getElementById("view-schedule").style.display = view === "schedule" ? "" : "none";
+  if (view === "schedule") renderCalendar();
+}
+document.getElementById("tab-browse").addEventListener("click", () => switchView("browse"));
+document.getElementById("tab-schedule").addEventListener("click", () => switchView("schedule"));
+
+/* ============================== Theme ============================== */
+const THEME_KEY = "siggraph2026.planner.theme";
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  // button shows the mode you'd switch TO
+  document.getElementById("btn-theme").textContent = t === "light" ? "🌙" : "☀️";
+}
+document.getElementById("btn-theme").addEventListener("click", () => {
+  const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+});
+
+/* ============================== Init ============================== */
+applyTheme(localStorage.getItem(THEME_KEY) ||
+  (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+buildToolbar();
+updateSelCount();
+renderList();
+</script>
+</body>
+</html>
