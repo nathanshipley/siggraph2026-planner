@@ -1,32 +1,39 @@
 # SIGGRAPH 2026 Session Planner (unofficial)
 
+### ⬇️ Download: [**planner.html**](planner.html)
+
+*(that link opens a GitHub page — click the **"Download raw file"** ⬇ button there. The one file is the whole app.)*
+
 A single-file, offline **personal session planner** for [SIGGRAPH 2026](https://s2026.siggraph.org/)
 (Los Angeles, 19–23 July 2026), plus the full conference schedule as CSV.
 
-> **Unofficial community tool.** This project is not affiliated with, sponsored by, or endorsed by
-> ACM SIGGRAPH. SIGGRAPH is a registered trademark of the Association for Computing Machinery.
-> All session content belongs to its authors and ACM SIGGRAPH — see [Data & attribution](#data--attribution).
+Two things this has that the official schedule site doesn't:
 
-![My Schedule calendar view — conflicts get red outlines](docs/screenshot-calendar.png)
-
-![Browse view — filter by day, track, and registration level; expand descriptions inline](docs/screenshot-browse.png)
+- **📅 Time view** — your picked sessions on a five-day time-bar calendar, with overlaps flagged in red
+- **🔎 Full-text search** — instantly search every session title *and* abstract at once
 
 ## Quick start
 
-Download **[`planner.html`](planner.html)** and double-click it. That's the whole app — no server,
-no install, works offline. Your picks are saved in your browser (localStorage) and survive reloads.
+1. Download [`planner.html`](planner.html) (link above).
+2. Double-click it — it opens in your browser. No install, no server, works offline.
+3. Check sessions to build **My Schedule**, spot conflicts on the calendar, and export
+   your picks to Google Calendar (`.ics`) when you're happy.
 
-What it does:
+Your picks are saved in your browser (localStorage) and survive reloads.
+
+More of what it does:
 
 - **Browse & filter** all 981 sessions by day, program track, registration level (Full Conference
-  Supporter / Full Conference / Experience / Discover), and free-text search over titles and abstracts.
-- **My Schedule**: a five-day time-bar calendar of your checked sessions. Overlaps are drawn
-  side-by-side with red outlines so conflicts jump out.
+  Supporter / Full Conference / Experience / Discover), and free-text search.
 - **Session groups**: Talks / Technical Papers / Educator's Forum / Art Papers blocks are linked to
   their individual presentations, exactly like the twirl-downs on the official schedule site.
 - **Export to Google Calendar**: one click generates an `.ics` of your picks with correct
   `America/Los_Angeles` times (import via Google Calendar → Settings → Import & export).
 - Light and dark mode.
+
+![My Schedule calendar view — conflicts get red outlines](docs/screenshot-calendar.png)
+
+![Browse view — filter by day, track, and registration level; expand descriptions inline](docs/screenshot-browse.png)
 
 ## What's in the repo
 
@@ -83,3 +90,9 @@ delay (the default settings); results are cached and resumable. See `scraper/SCR
 ## Credits
 
 Built by an attendee, for attendees. Have fun at the show. 🎬
+
+---
+
+> **Unofficial community tool.** This project is not affiliated with, sponsored by, or endorsed by
+> ACM SIGGRAPH. SIGGRAPH is a registered trademark of the Association for Computing Machinery.
+> All session content belongs to its authors and ACM SIGGRAPH — see [Data & attribution](#data--attribution).
