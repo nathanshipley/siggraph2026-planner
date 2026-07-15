@@ -7,6 +7,10 @@ A single-file, offline **personal session planner** for [SIGGRAPH 2026](https://
 > ACM SIGGRAPH. SIGGRAPH is a registered trademark of the Association for Computing Machinery.
 > All session content belongs to its authors and ACM SIGGRAPH — see [Data & attribution](#data--attribution).
 
+![My Schedule calendar view — conflicts get red outlines](docs/screenshot-calendar.png)
+
+![Browse view — filter by day, track, and registration level; expand descriptions inline](docs/screenshot-browse.png)
+
 ## Quick start
 
 Download **[`planner.html`](planner.html)** and double-click it. That's the whole app — no server,
