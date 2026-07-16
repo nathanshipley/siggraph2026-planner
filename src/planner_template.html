@@ -251,6 +251,19 @@
   .modal .m-meta b { color: var(--amber); }
   .modal .desc { margin-top: 10px; }
   .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .sync-step { padding: 14px 0; border-top: 1px solid var(--border); }
+  .sync-step:first-of-type { border-top: none; }
+  .sync-step h3 { font-size: 13.5px; margin-bottom: 4px; }
+  .sync-step p { font-size: 12.5px; color: var(--text-dim); margin-bottom: 8px; }
+  .sync-link {
+    width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text-dim);
+  }
+  .sync-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .import-report { margin-top: 10px; font-size: 12.5px; }
+  .import-report .bad { color: var(--conflict); }
+  .import-report .good { color: var(--green); }
   .modal-close {
     position: absolute; top: 12px; right: 16px;
     background: none; border: none; color: var(--text-dim); font-size: 22px; cursor: pointer;
@@ -280,6 +293,7 @@
   </nav>
   <div class="spacer"></div>
   <button class="btn" id="btn-theme" title="Toggle light / dark mode">☀️</button>
+  <button class="btn" id="btn-sync" title="Move your picks to another device">🔄 Sync / Backup</button>
   <button class="btn primary" id="btn-export" title="Download an .ics file — import via Google Calendar → Settings → Import &amp; export">📅 Export to Google Calendar (.ics)</button>
   <button class="btn danger" id="btn-clear" title="Uncheck every session">Clear all</button>
 </header>
@@ -369,16 +383,27 @@ SESSIONS.sort((a, b) => {
 
 /* ============================== Selections (localStorage) ============================== */
 const LS_KEY = "siggraph2026.planner.selections.v1";
+// Ids changed on 2026-07-16 (now keyed on the session's permanent URL rather
+// than day+time+title, so picks survive reschedules). Map old -> new.
+const BY_OLD_ID = new Map(SESSIONS.filter(s => s.oid).map(s => [s.oid, s.id]));
 let selections;
 (function initSelections() {
   const raw = localStorage.getItem(LS_KEY);
   if (raw == null) {
     selections = new Set(SEED_IDS.filter(id => BY_ID.has(id)));
     persist();
-  } else {
-    try { selections = new Set(JSON.parse(raw).filter(id => BY_ID.has(id))); }
-    catch { selections = new Set(); }
+    return;
   }
+  let stored = [];
+  try { stored = JSON.parse(raw); } catch { stored = []; }
+  let migrated = 0;
+  selections = new Set();
+  for (const id of stored) {
+    if (BY_ID.has(id)) { selections.add(id); continue; }
+    const remapped = BY_OLD_ID.get(id);
+    if (remapped) { selections.add(remapped); migrated++; }
+  }
+  if (migrated) persist();
 })();
 function persist() { localStorage.setItem(LS_KEY, JSON.stringify([...selections])); }
 
@@ -717,6 +742,10 @@ document.getElementById("calendar").addEventListener("click", e => {
 
 /* ============================== Modal ============================== */
 const overlay = document.getElementById("modal-overlay");
+function openModalHTML(html) {
+  document.getElementById("modal-content").innerHTML = html;
+  overlay.classList.add("open");
+}
 function openModal(id) {
   const s = BY_ID.get(id);
   if (!s) return;
@@ -746,6 +775,188 @@ document.getElementById("modal-content").addEventListener("click", e => {
   const btn = e.target.closest("#modal-remove");
   if (btn) { setSelected(btn.dataset.id, false); closeModal(); }
 });
+
+/* ============================== Sync / backup ============================== */
+// Picks live in this browser's localStorage — they do not follow a Chrome
+// profile and file:// and https:// are separate stores. Moving them between
+// machines therefore has to be explicit: a link, or a small .json file.
+
+// Drop the #s=... so a reload doesn't re-offer the same import. replaceState
+// is unavailable on some file:// setups, so fall back to a hash reset.
+function clearHash() {
+  try { history.replaceState(null, "", location.pathname + location.search); }
+  catch { location.hash = ""; }
+}
+
+function pickPayload() {
+  return {
+    app: "siggraph2026-planner",
+    version: 1,
+    exported: new Date().toISOString(),
+    // ids are primary; title/day/time let an import re-match if ids ever change
+    picks: [...selections].map(id => BY_ID.get(id)).filter(Boolean)
+      .map(s => ({ id: s.id, title: s.title, day: s.day, st: s.st })),
+  };
+}
+
+function syncLink() {
+  const ids = [...selections].join(".");
+  return location.origin + location.pathname + (ids ? "#s=" + ids : "");
+}
+
+/** Resolve incoming picks against this build, most-specific match first. */
+function resolvePicks(picks) {
+  const byKey = new Map(SESSIONS.map(s => [`${s.day}|${s.st}|${s.title}`, s]));
+  const byTitle = new Map();
+  for (const s of SESSIONS) if (!byTitle.has(s.title)) byTitle.set(s.title, s);
+  const found = [], missing = [];
+  for (const p of picks) {
+    const id = typeof p === "string" ? p : p.id;
+    let s = (id && BY_ID.get(id)) || (id && BY_ID.get(BY_OLD_ID.get(id)));
+    if (!s && typeof p === "object") {
+      s = byKey.get(`${p.day}|${p.st}|${p.title}`) || byTitle.get(p.title);
+    }
+    if (s) found.push(s.id); else missing.push(typeof p === "object" ? (p.title || id) : id);
+  }
+  return { found, missing };
+}
+
+function applyPicks(ids, mode) {
+  if (mode === "replace") selections = new Set(ids);
+  else for (const id of ids) selections.add(id);
+  persist();
+  updateSelCount();
+  renderList();
+  if (state.view === "schedule") renderCalendar();
+}
+
+function syncModalHTML(incoming) {
+  const n = selections.size;
+  const link = syncLink();
+  const fileOrigin = location.protocol === "file:";
+  let inc = "";
+  if (incoming) {
+    const { found, missing } = incoming;
+    inc = `<div class="sync-step" style="border-top:none">
+      <h3>📥 Incoming schedule — ${found.length} session${found.length === 1 ? "" : "s"}</h3>
+      <p>This link carries someone's picks${missing.length ? ` (${missing.length} couldn't be matched to this build)` : ""}.
+         You currently have ${n}.</p>
+      <div class="sync-row">
+        <button class="btn primary" id="inc-merge">Add to my ${n} pick${n === 1 ? "" : "s"}</button>
+        <button class="btn" id="inc-replace">Replace mine</button>
+        <button class="btn" id="inc-cancel">Ignore</button>
+      </div>
+    </div>`;
+  }
+  return `${inc}
+    <h2 style="margin-bottom:2px">Sync / Backup</h2>
+    <p class="hint" style="margin-bottom:6px">Your ${n} pick${n === 1 ? "" : "s"} are stored in this browser only —
+      they don't follow your Chrome profile to another computer. Move them across with a link or a file.</p>
+
+    <div class="sync-step">
+      <h3>🔗 Send my picks to another device</h3>
+      <p>Copy this link and open it on your laptop (email/Slack it to yourself). It carries your ${n} pick${n === 1 ? "" : "s"}.</p>
+      <div class="sync-row">
+        <input class="sync-link" id="sync-link" readonly value="${esc(link)}">
+        <button class="btn primary" id="copy-link">Copy</button>
+      </div>
+      ${fileOrigin ? `<p class="hint" style="margin-top:8px">⚠ You opened this planner as a local file, so this link only
+        works on <i>this</i> machine. To use links across devices, open the planner from its web address on both —
+        or use the file backup below.</p>` : ""}
+    </div>
+
+    <div class="sync-step">
+      <h3>💾 Backup / restore as a file</h3>
+      <p>Works everywhere, including offline copies. Download on one machine, import on the other.</p>
+      <div class="sync-row">
+        <button class="btn" id="dl-json">Download my-picks.json</button>
+        <label class="btn" for="up-json" style="cursor:pointer">Import a .json…</label>
+        <input type="file" id="up-json" accept=".json,application/json" style="display:none">
+      </div>
+      <div class="import-report" id="import-report"></div>
+    </div>`;
+}
+
+function openSyncModal(incoming) {
+  openModalHTML(syncModalHTML(incoming));
+}
+document.getElementById("btn-sync").addEventListener("click", () => openSyncModal(null));
+
+// modal-content is re-rendered constantly, so delegate
+document.getElementById("modal-content").addEventListener("click", async e => {
+  const id = e.target.id;
+  if (id === "copy-link") {
+    const input = document.getElementById("sync-link");
+    input.select();
+    try { await navigator.clipboard.writeText(input.value); }
+    catch { document.execCommand("copy"); }
+    e.target.textContent = "Copied!";
+    setTimeout(() => { e.target.textContent = "Copy"; }, 1500);
+  } else if (id === "dl-json") {
+    const blob = new Blob([JSON.stringify(pickPayload(), null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "siggraph2026-my-picks.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+    toast("Saved siggraph2026-my-picks.json — import it on your other machine.");
+  } else if (id === "inc-merge" || id === "inc-replace") {
+    applyPicks(pendingImport.found, id === "inc-replace" ? "replace" : "merge");
+    clearHash();
+    toast(`${id === "inc-replace" ? "Replaced with" : "Added"} ${pendingImport.found.length} session${pendingImport.found.length === 1 ? "" : "s"}.`);
+    closeModal();
+  } else if (id === "inc-cancel") {
+    clearHash();
+    closeModal();
+  }
+});
+
+document.getElementById("modal-content").addEventListener("change", e => {
+  if (e.target.id !== "up-json") return;
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const report = document.getElementById("import-report");
+    let data;
+    try { data = JSON.parse(reader.result); }
+    catch { report.innerHTML = `<span class="bad">That file isn't valid JSON.</span>`; return; }
+    const picks = Array.isArray(data) ? data : data.picks;
+    if (!Array.isArray(picks)) {
+      report.innerHTML = `<span class="bad">No picks found in that file.</span>`;
+      return;
+    }
+    const { found, missing } = resolvePicks(picks);
+    pendingImport = { found, missing };
+    report.innerHTML = `<div><b>${found.length}</b> session${found.length === 1 ? "" : "s"} matched` +
+      (missing.length ? ` · <span class="bad">${missing.length} not found</span>` : ` <span class="good">✓</span>`) + `</div>` +
+      (missing.length ? `<div class="hint" style="margin-top:4px">Not found: ${missing.slice(0, 4).map(esc).join("; ")}${missing.length > 4 ? "…" : ""}<br>(they may have been rescheduled or removed from the program)</div>` : "") +
+      `<div class="sync-row" style="margin-top:10px">
+         <button class="btn primary" id="inc-merge">Add to my picks</button>
+         <button class="btn" id="inc-replace">Replace mine</button>
+       </div>`;
+  };
+  reader.readAsText(file);
+});
+
+let pendingImport = { found: [], missing: [] };
+
+// A #s=... link means someone sent us their schedule
+function checkIncomingLink() {
+  const m = /[#&]s=([\w.]+)/.exec(location.hash);
+  if (!m) return;
+  const ids = m[1].split(".").filter(Boolean);
+  if (!ids.length) return;
+  pendingImport = resolvePicks(ids);
+  if (!pendingImport.found.length) {
+    toast("That sync link didn't match any sessions in this build.");
+    return;
+  }
+  openSyncModal(pendingImport);
+}
+// Pasting a #s=… link into the address bar of an already-open planner is a
+// same-document navigation — no reload, so catch it here too.
+window.addEventListener("hashchange", checkIncomingLink);
 
 /* ============================== ICS export ============================== */
 function icsEscape(s) {
@@ -858,13 +1069,22 @@ document.getElementById("btn-clear").addEventListener("click", () => {
 });
 
 /* ============================== Tabs ============================== */
+// Hiding a view collapses its layout and loses the scroll offset, so remember
+// where the reader was and put them back there.
+const scrollMemory = { browse: 0, schedule: 0 };
 function switchView(view) {
+  if (view === state.view) return;
+  scrollMemory[state.view] = window.scrollY;
   state.view = view;
   document.getElementById("tab-browse").classList.toggle("active", view === "browse");
   document.getElementById("tab-schedule").classList.toggle("active", view === "schedule");
   document.getElementById("view-browse").style.display = view === "browse" ? "" : "none";
   document.getElementById("view-schedule").style.display = view === "schedule" ? "" : "none";
   if (view === "schedule") renderCalendar();
+  // Force layout before restoring: until the shown view is measured the page is
+  // still short, and the browser would clamp the scroll to that shorter height.
+  void document.body.offsetHeight;
+  window.scrollTo(0, scrollMemory[view] || 0);
 }
 document.getElementById("tab-browse").addEventListener("click", () => switchView("browse"));
 document.getElementById("tab-schedule").addEventListener("click", () => switchView("schedule"));
@@ -888,6 +1108,7 @@ applyTheme(localStorage.getItem(THEME_KEY) ||
 buildToolbar();
 updateSelCount();
 renderList();
+checkIncomingLink();
 </script>
 </body>
 </html>

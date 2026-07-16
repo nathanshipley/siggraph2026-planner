@@ -39,6 +39,19 @@ def to_iso_date(day_and_date: str):
 
 
 def make_id(row) -> str:
+    """Stable identity for a session, so saved picks survive schedule changes.
+
+    The session URL is unique per session and doesn't change when a session is
+    moved or retitled — unlike day/start/title. Group headers have no page of
+    their own (".../null"), so fall back to day+title for those.
+    """
+    url = row["session_url"].strip()
+    key = url if url and not url.endswith("/null") else f"{row['day_and_date']}|{row['title']}"
+    return hashlib.md5(key.encode("utf-8")).hexdigest()[:10]
+
+
+def make_legacy_id(row) -> str:
+    """The pre-2026-07-16 id scheme; used to migrate existing localStorage picks."""
     key = f"{row['day_and_date']}|{row['start_time']}|{row['title']}"
     return hashlib.md5(key.encode("utf-8")).hexdigest()[:10]
 
@@ -79,6 +92,7 @@ def main():
             url = ""  # dead link on the official site — don't render it
         sessions.append({
             "id": sid,
+            "oid": make_legacy_id(row),
             "day": row["day_and_date"].strip(),
             "date": to_iso_date(row["day_and_date"]),
             "sm": sm,

@@ -37,6 +37,11 @@ More of what it does:
   their individual presentations, exactly like the twirl-downs on the official schedule site.
 - **Export to Google Calendar**: one click generates an `.ics` of your picks with correct
   `America/Los_Angeles` times (import via Google Calendar → Settings → Import & export).
+- **Sync / Backup**: your picks live in one browser's localStorage — they don't follow a Chrome
+  profile to another machine, and a downloaded copy and the web version are separate stores.
+  So the **Sync / Backup** button gives you a link that carries your picks (open it on the other
+  device) and a `.json` backup you can import anywhere. Picks are keyed on each session's
+  permanent URL, so they survive the schedule being rescheduled or retitled.
 - Light and dark mode.
 
 ![Browse view — filter by day, track, and registration level; expand descriptions inline](docs/screenshot-browse.png)
