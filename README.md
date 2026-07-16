@@ -7,10 +7,11 @@
 A single-file, offline **personal session planner** for [SIGGRAPH 2026](https://s2026.siggraph.org/)
 (Los Angeles, 19–23 July 2026), plus the full conference schedule as CSV.
 
-Two things this has that the official schedule site doesn't:
+Three things this has that the official schedule site doesn't:
 
 - **📅 Time view** — your picked sessions on a five-day time-bar calendar, with overlaps flagged in red
-- **🔎 Full-text search** — instantly search every session title *and* abstract at once
+- **🔎 Full-text search** — instantly search every session title, abstract, speaker *and* company at once
+- **🏢 Filter by company** — find every session with someone from NVIDIA, Pixar, Wētā FX, your own studio…
 
 **Just want the schedule for your own agent?** Here's a CSV:
 [`siggraph2026_schedule_with_descriptions.csv`](data/siggraph2026_schedule_with_descriptions.csv)
@@ -30,8 +31,8 @@ Your picks are saved in your browser (localStorage) and survive reloads.
 
 More of what it does:
 
-- **Browse & filter** all 981 sessions by day, program track, registration level (Full Conference
-  Supporter / Full Conference / Experience / Discover), and free-text search.
+- **Browse & filter** all 1,008 sessions by day, program track, registration level (Full Conference
+  Supporter / Full Conference / Experience / Discover), company, and free-text search.
 - **Session groups**: Talks / Technical Papers / Educator's Forum / Art Papers blocks are linked to
   their individual presentations, exactly like the twirl-downs on the official schedule site.
 - **Export to Google Calendar**: one click generates an `.ics` of your picks with correct
@@ -45,19 +46,23 @@ More of what it does:
 | Path | What it is |
 |---|---|
 | `planner.html` | The self-contained planner app (schedule data embedded) |
-| `data/siggraph2026_schedule_with_descriptions.csv` | Full schedule, 981 rows, incl. session abstracts |
-| `data/siggraph2026_schedule.csv` | Same schedule without the abstract text (facts only) |
+| `data/siggraph2026_schedule_with_descriptions.csv` | Full schedule, 1,008 rows, incl. abstracts + affiliations |
+| `data/siggraph2026_schedule.csv` | Earlier schedule snapshot without the abstract text (facts only) |
 | `data/siggraph2026_exhibitors.csv` | Exhibitor list |
 | `src/` | Template + build script — regenerate `planner.html` from the CSV |
-| `scraper/` | The scripts that fetched the abstracts, plus notes |
+| `scraper/` | `refresh_schedule.py` (see below) + the original description fetchers |
 
 CSV columns: `day_and_date, start_time, end_time, title, program_track, location,
-speakers_or_contributors, keywords_tags, interest_area, registration_category, session_url, description`.
+speakers_or_contributors, affiliations, keywords_tags, interest_area, registration_category,
+session_url, description`.
+
+`affiliations` is the set of companies/institutions for that session's contributors
+(e.g. `Asteria; Filmmaker; LTX`), joined from the official contributor index.
 
 ## Data notes
 
 - Scraped from the official schedule at
-  [s2026.conference-schedule.org](https://s2026.conference-schedule.org/) on **15 July 2026**.
+  [s2026.conference-schedule.org](https://s2026.conference-schedule.org/) on **16 July 2026**.
   The official schedule changes — always confirm times/rooms there before you commit your feet.
 - All times are local Pacific (PDT).
 - ~85 rows are **session-group headers** (e.g. a Talks block containing four 20-minute talks).
@@ -74,11 +79,27 @@ python3 src/build_planner.py --help     # --out, --no-seeds
 
 Python 3.8+, stdlib only.
 
-## Re-scraping
+## Keeping the data fresh (cheaply)
 
-`scraper/fetch_descriptions.py` (or the PowerShell port) re-fetches session abstracts.
-**Please fetch gently** — the schedule site rate-bans bursty clients. Use 1–2 workers with a
-delay (the default settings); results are cached and resumable. See `scraper/SCRAPING_NOTES.md`.
+The schedule site rate-bans bursty clients, so **don't** re-crawl 900 session pages to find out
+whether anything changed. It publishes its whole program as five static per-day files, which the
+Full Program page lazy-loads. `scraper/refresh_schedule.py` uses those instead:
+
+```bash
+python3 scraper/refresh_schedule.py --check   # 7 requests: what changed since the CSV?
+python3 scraper/refresh_schedule.py           # + fetch only genuinely new abstracts, rewrite CSV
+python3 src/build_planner.py                  # rebuild planner.html from the refreshed CSV
+```
+
+`--check` costs **7 requests** (Full Program page + 5 day snippets + the contributor index) and
+reports added / removed / rescheduled / moved-room / retitled sessions. It also prints the
+program's own last-regenerated timestamp, so you can see at a glance whether the site's data has
+moved at all. A full refresh only fetches abstracts for sessions it hasn't seen before, one at a
+time with a delay, resumable via `scraper/descriptions_cache.csv`, and it stops immediately if the
+site starts refusing requests.
+
+`scraper/fetch_descriptions.py` (and its PowerShell port) are the original brute-force abstract
+fetchers, kept for reference — see `scraper/SCRAPING_NOTES.md`. Prefer `refresh_schedule.py`.
 
 ## Data & attribution
 

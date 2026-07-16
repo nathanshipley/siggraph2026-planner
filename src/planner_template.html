@@ -148,6 +148,12 @@
   .kid-row { padding: 2px 0 2px 12px; font-size: 12.5px; color: var(--text-dim); }
   .kid-row .time { color: var(--amber); font-weight: 600; }
   .card-speakers { margin-top: 4px; font-size: 12px; color: var(--text-faint); }
+  .card-affil { margin-top: 3px; font-size: 12px; color: var(--text-faint); }
+  .card-affil .org {
+    display: inline-block; padding: 0 6px; margin-right: 4px;
+    border-radius: 4px; border: 1px solid var(--border);
+    background: var(--bg-card-hover); color: var(--text-dim);
+  }
   .card details { margin-top: 6px; }
   .card summary {
     font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none;
@@ -285,7 +291,8 @@
       <div class="day-pills" id="day-pills"></div>
       <select id="track-filter"><option value="">All tracks</option></select>
       <select id="rc-filter"><option value="">All registration categories</option></select>
-      <input type="search" id="search" placeholder="Search title &amp; description…">
+      <select id="org-filter"><option value="">All companies</option></select>
+      <input type="search" id="search" placeholder="Search title, abstract, people, company…">
       <label class="toggle-label"><input type="checkbox" id="only-selected"> My picks only</label>
       <span class="result-count" id="result-count"></span>
     </div>
@@ -341,10 +348,13 @@ const DAYS = [
 ];
 const DAY_INDEX = new Map(DAYS.map((d, i) => [d.date, i]));
 
-// Precompute lowercase search text (title + description) and registration-category tokens
+// Precompute lowercase search text (title + description + people + companies)
+// and registration-category tokens
 for (const s of SESSIONS) {
-  s._q = (s.title + " " + s.desc).toLowerCase();
+  s.aff = s.aff || "";
+  s._q = [s.title, s.desc, s.sp, s.aff, s.kw].join(" ").toLowerCase();
   s._rc = new Set(s.rc.split(";").map(t => t.trim()).filter(Boolean));
+  s._orgs = new Set(s.aff.split(";").map(t => t.trim()).filter(Boolean));
 }
 
 // Sort master list: day, then start time (missing times last), then title
@@ -391,7 +401,7 @@ function updateSelCount() {
 
 /* ============================== State ============================== */
 const state = { view: "browse" };
-const filterState = { day: "", track: "", rc: "", q: "", onlySelected: false };
+const filterState = { day: "", track: "", rc: "", org: "", q: "", onlySelected: false };
 
 /* ============================== Utilities ============================== */
 function esc(s) {
@@ -464,6 +474,17 @@ function buildToolbar() {
     rcTokens.map(t => `<option value="${esc(t)}">${esc(t)} (${rcCounts.get(t)})</option>`).join(""));
   rcSel.addEventListener("change", () => { filterState.rc = rcSel.value; renderList(); });
 
+  // Company / institution dropdown, most-sessions first
+  const orgCounts = new Map();
+  for (const s of SESSIONS)
+    for (const o of s._orgs) orgCounts.set(o, (orgCounts.get(o) || 0) + 1);
+  const orgSel = document.getElementById("org-filter");
+  const orgs = [...orgCounts.keys()].sort((a, b) =>
+    orgCounts.get(b) - orgCounts.get(a) || a.localeCompare(b));
+  orgSel.insertAdjacentHTML("beforeend",
+    orgs.map(o => `<option value="${esc(o)}">${esc(o)} (${orgCounts.get(o)})</option>`).join(""));
+  orgSel.addEventListener("change", () => { filterState.org = orgSel.value; renderList(); });
+
   // Search (debounced)
   let deb;
   const search = document.getElementById("search");
@@ -482,6 +503,7 @@ function matchesFilters(s) {
   if (filterState.day && s.date !== filterState.day) return false;
   if (filterState.track && s.track !== filterState.track) return false;
   if (filterState.rc && !s._rc.has(filterState.rc)) return false;
+  if (filterState.org && !s._orgs.has(filterState.org)) return false;
   if (filterState.onlySelected && !selections.has(s.id)) return false;
   if (filterState.q && !s._q.includes(filterState.q)) return false;
   return true;
@@ -498,6 +520,11 @@ function partOfHTML(s) {
   if (!s.pid) return "";
   const p = BY_ID.get(s.pid);
   return p ? `<div class="part-of">Part of session: ${esc(p.title)} (${esc(fmtTime(p))})</div>` : "";
+}
+function affilHTML(s) {
+  if (!s.aff) return "";
+  const orgs = s.aff.split(";").map(a => a.trim()).filter(Boolean);
+  return `<div class="card-affil">🏢 ${orgs.map(o => `<span class="org">${esc(o)}</span>`).join("")}</div>`;
 }
 function cardHTML(s) {
   const checked = selections.has(s.id);
@@ -526,6 +553,7 @@ function cardHTML(s) {
       </div>
       ${partOfHTML(s)}
       ${speakers}
+      ${affilHTML(s)}
       ${details}
     </div>
   </div>`;
@@ -700,6 +728,7 @@ function openModal(id) {
     <div class="m-meta">${trackBadge(s.track)} ${s.kids ? `<span class="group-note">▤ session · ${s.kids.length} presentations</span>` : ""} ${s.rc ? `<span class="rc-note">${esc(s.rc)}</span>` : ""}</div>
     ${partOfHTML(s)}
     ${s.sp ? `<div class="m-meta">👤 ${esc(s.sp)}</div>` : ""}
+    ${affilHTML(s)}
     ${s.desc ? `<div class="desc">${esc(s.desc)}</div>` : ""}
     ${kidListHTML(s)}
     ${s.kw ? `<div class="m-meta" style="margin-top:8px">🏷 ${esc(s.kw)}</div>` : ""}

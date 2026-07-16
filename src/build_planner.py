@@ -89,6 +89,7 @@ def main():
             "track": row["program_track"].strip(),
             "loc": row["location"].strip(),
             "sp": row["speakers_or_contributors"].strip(),
+            "aff": row.get("affiliations", "").strip(),
             "kw": row["keywords_tags"].strip(),
             "rc": row["registration_category"].strip(),
             "url": url,
