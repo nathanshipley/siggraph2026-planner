@@ -69,6 +69,7 @@
     display: inline-block; min-width: 20px; padding: 1px 6px; margin-left: 6px;
     border-radius: 10px; background: var(--accent); color: #fff; font-size: 11px; text-align: center;
   }
+  .tab .must-badge { background: var(--amber); color: #1d2233; font-weight: 700; }
   .spacer { flex: 1; }
   .btn {
     padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border);
@@ -120,6 +121,17 @@
   .card input[type="checkbox"] {
     width: 18px; height: 18px; margin-top: 3px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
   }
+  .star-btn {
+    background: none; border: none; padding: 0; margin-top: 1px;
+    font-size: 17px; line-height: 1.2; cursor: pointer; flex-shrink: 0;
+    color: var(--text-faint); opacity: .3;
+  }
+  .star-btn:hover { opacity: 1; color: var(--amber); transform: scale(1.15); }
+  .star-btn.on { opacity: 1; color: var(--amber); }
+  /* Can't Miss: heavier than a normal pick, in both views */
+  .card.must { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+  .card.must .card-title { font-weight: 800; }
+  .card.must .card-title::before { content: "★ "; color: var(--amber); }
   .card-body { flex: 1; min-width: 0; }
   .card-title { font-size: 14px; font-weight: 650; }
   .card-meta { margin-top: 3px; font-size: 12.5px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 4px 12px; }
@@ -220,6 +232,12 @@
   .cal-block:hover { z-index: 20; filter: brightness(1.15); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
   .cal-block .b-time { font-weight: 700; opacity: .95; white-space: nowrap; }
   .cal-block .b-title { font-weight: 600; }
+  .cal-block.must {
+    border: 2px solid var(--amber);
+    box-shadow: 0 0 0 1px var(--amber), 0 2px 10px rgba(0, 0, 0, .4);
+    font-weight: 700;
+  }
+  .cal-block.must .b-title { font-weight: 800; }
   .cal-block.conflict {
     border: 2px solid var(--conflict);
     box-shadow: 0 0 0 1px var(--conflict), 0 0 10px rgba(255, 77, 77, .35);
@@ -289,7 +307,7 @@
   <h1>SIGGRAPH <span>2026</span> Planner</h1>
   <nav class="tabs">
     <button class="tab active" id="tab-browse">Browse</button>
-    <button class="tab" id="tab-schedule">My Schedule<span class="badge" id="sel-count">0</span></button>
+    <button class="tab" id="tab-schedule">My Schedule<span class="badge" id="sel-count">0</span><span class="badge must-badge" id="must-count" style="display:none"></span></button>
   </nav>
   <div class="spacer"></div>
   <button class="btn" id="btn-theme" title="Toggle light / dark mode">☀️</button>
@@ -317,6 +335,7 @@
   <section id="view-schedule" style="display:none">
     <div class="cal-legend">
       <span><span class="legend-swatch" style="background:var(--conflict)"></span>Red outline = time conflict</span>
+      <span><span class="legend-swatch" style="background:var(--amber)"></span>★ Gold + bold = Can't Miss</span>
       <span class="hint">Click a block for details / to remove it. Colors group by program track.</span>
     </div>
     <div id="conflict-summary" class="conflict-summary"></div>
@@ -383,45 +402,78 @@ SESSIONS.sort((a, b) => {
 
 /* ============================== Selections (localStorage) ============================== */
 const LS_KEY = "siggraph2026.planner.selections.v1";
+const LS_STAR = "siggraph2026.planner.mustsee.v1";
 // Ids changed on 2026-07-16 (now keyed on the session's permanent URL rather
 // than day+time+title, so picks survive reschedules). Map old -> new.
 const BY_OLD_ID = new Map(SESSIONS.filter(s => s.oid).map(s => [s.oid, s.id]));
-let selections;
-(function initSelections() {
-  const raw = localStorage.getItem(LS_KEY);
-  if (raw == null) {
-    selections = new Set(SEED_IDS.filter(id => BY_ID.has(id)));
-    persist();
-    return;
-  }
+
+/** Read a stored id list, remapping any pre-2026-07-16 ids and dropping unknowns. */
+function loadIds(key) {
+  const raw = localStorage.getItem(key);
+  if (raw == null) return null;
   let stored = [];
-  try { stored = JSON.parse(raw); } catch { stored = []; }
+  try { stored = JSON.parse(raw); } catch { return new Set(); }
+  const out = new Set();
   let migrated = 0;
-  selections = new Set();
   for (const id of stored) {
-    if (BY_ID.has(id)) { selections.add(id); continue; }
+    if (BY_ID.has(id)) { out.add(id); continue; }
     const remapped = BY_OLD_ID.get(id);
-    if (remapped) { selections.add(remapped); migrated++; }
+    if (remapped) { out.add(remapped); migrated++; }
   }
-  if (migrated) persist();
-})();
-function persist() { localStorage.setItem(LS_KEY, JSON.stringify([...selections])); }
+  return Object.assign(out, { _migrated: migrated });
+}
+
+let selections = loadIds(LS_KEY);
+let starred = loadIds(LS_STAR) || new Set();
+if (selections == null) {
+  selections = new Set(SEED_IDS.filter(id => BY_ID.has(id)));
+  persist();
+} else if (selections._migrated || starred._migrated) {
+  persist();
+}
+// "Can't Miss" only ever applies to something on your schedule
+for (const id of [...starred]) if (!selections.has(id)) starred.delete(id);
+
+function persist() {
+  localStorage.setItem(LS_KEY, JSON.stringify([...selections]));
+  localStorage.setItem(LS_STAR, JSON.stringify([...starred]));
+}
 
 function setSelected(id, on) {
-  if (on) selections.add(id); else selections.delete(id);
+  if (on) selections.add(id);
+  else { selections.delete(id); starred.delete(id); }  // dropping a pick drops its star
   persist();
   updateSelCount();
-  const card = document.querySelector(`.card[data-id="${id}"]`);
-  if (card) {
-    card.classList.toggle("selected", on);
-    const cb = card.querySelector("input[type=checkbox]");
-    if (cb) cb.checked = on;
-  }
+  syncCard(id);
   if (state.view === "schedule") renderCalendar();
   if (filterState.onlySelected && !on) renderList();
 }
+/** Can't Miss implies it's on your schedule, so starring also picks it. */
+function setStarred(id, on) {
+  if (on) { starred.add(id); selections.add(id); } else starred.delete(id);
+  persist();
+  updateSelCount();
+  syncCard(id);
+  if (state.view === "schedule") renderCalendar();
+}
+function syncCard(id) {
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (!card) return;
+  card.classList.toggle("selected", selections.has(id));
+  card.classList.toggle("must", starred.has(id));
+  const cb = card.querySelector("input[type=checkbox]");
+  if (cb) cb.checked = selections.has(id);
+  const star = card.querySelector(".star-btn");
+  if (star) {
+    star.classList.toggle("on", starred.has(id));
+    star.setAttribute("aria-pressed", starred.has(id));
+  }
+}
 function updateSelCount() {
   document.getElementById("sel-count").textContent = selections.size;
+  const badge = document.getElementById("must-count");
+  badge.textContent = starred.size ? `★ ${starred.size}` : "";
+  badge.style.display = starred.size ? "" : "none";
 }
 
 /* ============================== State ============================== */
@@ -553,6 +605,7 @@ function affilHTML(s) {
 }
 function cardHTML(s) {
   const checked = selections.has(s.id);
+  const must = starred.has(s.id);
   const loc = s.loc ? esc(s.loc) : `<i>location TBD</i>`;
   const speakers = s.sp ? `<div class="card-speakers">👤 ${esc(s.sp)}</div>` : "";
   const rc = s.rc ? `<span class="rc-note">${esc(s.rc)}</span>` : "";
@@ -565,8 +618,9 @@ function cardHTML(s) {
   const details = detailInner
     ? `<details><summary>Details</summary><div class="desc">${detailInner}</div></details>`
     : "";
-  return `<div class="card${checked ? " selected" : ""}" data-id="${s.id}">
+  return `<div class="card${checked ? " selected" : ""}${must ? " must" : ""}" data-id="${s.id}">
     <input type="checkbox" ${checked ? "checked" : ""} aria-label="Add to my schedule">
+    <button class="star-btn${must ? " on" : ""}" aria-pressed="${must}" title="Mark as Can't Miss">★</button>
     <div class="card-body">
       <div class="card-title">${esc(s.title)}</div>
       <div class="card-meta">
@@ -611,6 +665,12 @@ document.getElementById("session-list").addEventListener("change", e => {
     const card = e.target.closest(".card");
     if (card) setSelected(card.dataset.id, e.target.checked);
   }
+});
+document.getElementById("session-list").addEventListener("click", e => {
+  const btn = e.target.closest(".star-btn");
+  if (!btn) return;
+  const card = btn.closest(".card");
+  if (card) setStarred(card.dataset.id, !starred.has(card.dataset.id));
 });
 
 /* ============================== Calendar view ============================== */
@@ -689,7 +749,7 @@ function renderCalendar() {
   gutter += `</div>`;
   parts.push(gutter);
 
-  let conflictCount = 0;
+  let conflictCount = 0, mustConflicts = 0;
   for (const d of DAYS) {
     const dayEvents = layoutDay(timed.filter(s => s.date === d.date));
     let col = `<div class="cal-col" style="height:${CAL_H}px">`;
@@ -700,10 +760,12 @@ function renderCalendar() {
       const height = Math.max((emC - smC) * PX_PER_MIN, 16);
       const wPct = 100 / s._cols;
       if (s._conflict) conflictCount++;
-      col += `<div class="cal-block${s._conflict ? " conflict" : ""}" data-id="${s.id}"
+      const must = starred.has(s.id);
+      if (must && s._conflict) mustConflicts++;
+      col += `<div class="cal-block${s._conflict ? " conflict" : ""}${must ? " must" : ""}" data-id="${s.id}"
         style="top:${top}px;height:${height - 2}px;left:${s._col * wPct}%;width:calc(${wPct}% - 3px);--h:${trackHue(s.track)}"
-        title="${esc(s.title)}&#10;${esc(fmtTime(s))}${s.loc ? "&#10;" + esc(s.loc) : ""}">
-        <span class="b-time">${esc(s.st)}</span> <span class="b-title">${esc(s.title)}</span>
+        title="${must ? "★ Can't Miss — " : ""}${esc(s.title)}&#10;${esc(fmtTime(s))}${s.loc ? "&#10;" + esc(s.loc) : ""}">
+        <span class="b-time">${esc(s.st)}</span> <span class="b-title">${must ? "★ " : ""}${esc(s.title)}</span>
       </div>`;
     }
     col += `</div>`;
@@ -716,7 +778,8 @@ function renderCalendar() {
   if (!timed.length) {
     cs.innerHTML = `<span class="hint">Nothing scheduled yet — check sessions in the Browse tab.</span>`;
   } else if (conflictCount) {
-    cs.innerHTML = `<span class="warn">⚠ ${conflictCount} session${conflictCount > 1 ? "s" : ""} with time conflicts</span> <span class="hint">— shown side-by-side with red outlines</span>`;
+    cs.innerHTML = `<span class="warn">⚠ ${conflictCount} session${conflictCount > 1 ? "s" : ""} with time conflicts</span> <span class="hint">— shown side-by-side with red outlines</span>` +
+      (mustConflicts ? ` <b style="color:var(--amber)">★ ${mustConflicts} of them ${mustConflicts > 1 ? "are" : "is"} Can't Miss</b>` : "");
   } else {
     cs.innerHTML = `<span class="ok">✓ No time conflicts in your schedule</span>`;
   }
@@ -763,6 +826,7 @@ function openModal(id) {
     ${s.kw ? `<div class="m-meta" style="margin-top:8px">🏷 ${esc(s.kw)}</div>` : ""}
     <div class="modal-actions">
       ${s.url ? `<a class="btn" href="${esc(s.url)}" target="_blank" rel="noopener">Session page ↗</a>` : ""}
+      <button class="btn" id="modal-star" data-id="${s.id}">${starred.has(s.id) ? "★ Can't Miss — unmark" : "☆ Mark Can't Miss"}</button>
       <button class="btn danger" id="modal-remove" data-id="${s.id}">Remove from schedule</button>
     </div>`;
   overlay.classList.add("open");
@@ -772,8 +836,10 @@ document.getElementById("modal-close").addEventListener("click", closeModal);
 overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 document.getElementById("modal-content").addEventListener("click", e => {
-  const btn = e.target.closest("#modal-remove");
-  if (btn) { setSelected(btn.dataset.id, false); closeModal(); }
+  const rm = e.target.closest("#modal-remove");
+  if (rm) { setSelected(rm.dataset.id, false); closeModal(); return; }
+  const st = e.target.closest("#modal-star");
+  if (st) { setStarred(st.dataset.id, !starred.has(st.dataset.id)); openModal(st.dataset.id); }
 });
 
 /* ============================== Sync / backup ============================== */
@@ -791,39 +857,47 @@ function clearHash() {
 function pickPayload() {
   return {
     app: "siggraph2026-planner",
-    version: 1,
+    version: 2,
     exported: new Date().toISOString(),
     // ids are primary; title/day/time let an import re-match if ids ever change
     picks: [...selections].map(id => BY_ID.get(id)).filter(Boolean)
-      .map(s => ({ id: s.id, title: s.title, day: s.day, st: s.st })),
+      .map(s => ({ id: s.id, title: s.title, day: s.day, st: s.st, ...(starred.has(s.id) ? { star: true } : {}) })),
   };
 }
 
+// #s=<picked ids>&p=<the subset that's Can't Miss>
 function syncLink() {
   const ids = [...selections].join(".");
-  return location.origin + location.pathname + (ids ? "#s=" + ids : "");
+  const stars = [...starred].join(".");
+  return location.origin + location.pathname +
+    (ids ? "#s=" + ids + (stars ? "&p=" + stars : "") : "");
 }
 
-/** Resolve incoming picks against this build, most-specific match first. */
-function resolvePicks(picks) {
+/** Resolve incoming picks against this build, most-specific match first.
+ *  Returns ids, plus which of them were flagged Can't Miss. */
+function resolvePicks(picks, starIds) {
   const byKey = new Map(SESSIONS.map(s => [`${s.day}|${s.st}|${s.title}`, s]));
   const byTitle = new Map();
   for (const s of SESSIONS) if (!byTitle.has(s.title)) byTitle.set(s.title, s);
-  const found = [], missing = [];
+  const incomingStars = new Set(starIds || []);
+  const found = [], missing = [], stars = [];
   for (const p of picks) {
     const id = typeof p === "string" ? p : p.id;
     let s = (id && BY_ID.get(id)) || (id && BY_ID.get(BY_OLD_ID.get(id)));
     if (!s && typeof p === "object") {
       s = byKey.get(`${p.day}|${p.st}|${p.title}`) || byTitle.get(p.title);
     }
-    if (s) found.push(s.id); else missing.push(typeof p === "object" ? (p.title || id) : id);
+    if (!s) { missing.push(typeof p === "object" ? (p.title || id) : id); continue; }
+    found.push(s.id);
+    if ((typeof p === "object" && p.star) || incomingStars.has(id)) stars.push(s.id);
   }
-  return { found, missing };
+  return { found, missing, stars };
 }
 
-function applyPicks(ids, mode) {
-  if (mode === "replace") selections = new Set(ids);
+function applyPicks(ids, mode, stars) {
+  if (mode === "replace") { selections = new Set(ids); starred = new Set(); }
   else for (const id of ids) selections.add(id);
+  for (const id of stars || []) { starred.add(id); selections.add(id); }
   persist();
   updateSelCount();
   renderList();
@@ -836,9 +910,9 @@ function syncModalHTML(incoming) {
   const fileOrigin = location.protocol === "file:";
   let inc = "";
   if (incoming) {
-    const { found, missing } = incoming;
+    const { found, missing, stars } = incoming;
     inc = `<div class="sync-step" style="border-top:none">
-      <h3>📥 Incoming schedule — ${found.length} session${found.length === 1 ? "" : "s"}</h3>
+      <h3>📥 Incoming schedule — ${found.length} session${found.length === 1 ? "" : "s"}${stars && stars.length ? ` <span style="color:var(--amber)">(★ ${stars.length} Can't Miss)</span>` : ""}</h3>
       <p>This link carries someone's picks${missing.length ? ` (${missing.length} couldn't be matched to this build)` : ""}.
          You currently have ${n}.</p>
       <div class="sync-row">
@@ -850,12 +924,12 @@ function syncModalHTML(incoming) {
   }
   return `${inc}
     <h2 style="margin-bottom:2px">Sync / Backup</h2>
-    <p class="hint" style="margin-bottom:6px">Your ${n} pick${n === 1 ? "" : "s"} are stored in this browser only —
+    <p class="hint" style="margin-bottom:6px">Your ${n} pick${n === 1 ? "" : "s"}${starred.size ? ` (★ ${starred.size} Can't Miss)` : ""} are stored in this browser only —
       they don't follow your Chrome profile to another computer. Move them across with a link or a file.</p>
 
     <div class="sync-step">
       <h3>🔗 Send my picks to another device</h3>
-      <p>Copy this link and open it on your laptop (email/Slack it to yourself). It carries your ${n} pick${n === 1 ? "" : "s"}.</p>
+      <p>Copy this link and open it on your laptop (email/Slack it to yourself). It carries your ${n} pick${n === 1 ? "" : "s"}${starred.size ? ` and your ★ Can't Miss marks` : ""}.</p>
       <div class="sync-row">
         <input class="sync-link" id="sync-link" readonly value="${esc(link)}">
         <button class="btn primary" id="copy-link">Copy</button>
@@ -901,9 +975,11 @@ document.getElementById("modal-content").addEventListener("click", async e => {
     URL.revokeObjectURL(a.href);
     toast("Saved siggraph2026-my-picks.json — import it on your other machine.");
   } else if (id === "inc-merge" || id === "inc-replace") {
-    applyPicks(pendingImport.found, id === "inc-replace" ? "replace" : "merge");
+    const { found, stars } = pendingImport;
+    applyPicks(found, id === "inc-replace" ? "replace" : "merge", stars);
     clearHash();
-    toast(`${id === "inc-replace" ? "Replaced with" : "Added"} ${pendingImport.found.length} session${pendingImport.found.length === 1 ? "" : "s"}.`);
+    toast(`${id === "inc-replace" ? "Replaced with" : "Added"} ${found.length} session${found.length === 1 ? "" : "s"}` +
+      (stars.length ? `, ${stars.length} marked ★ Can't Miss.` : "."));
     closeModal();
   } else if (id === "inc-cancel") {
     clearHash();
@@ -926,9 +1002,10 @@ document.getElementById("modal-content").addEventListener("change", e => {
       report.innerHTML = `<span class="bad">No picks found in that file.</span>`;
       return;
     }
-    const { found, missing } = resolvePicks(picks);
-    pendingImport = { found, missing };
+    const { found, missing, stars } = resolvePicks(picks);
+    pendingImport = { found, missing, stars };
     report.innerHTML = `<div><b>${found.length}</b> session${found.length === 1 ? "" : "s"} matched` +
+      (stars.length ? ` <span style="color:var(--amber)">(★ ${stars.length} Can't Miss)</span>` : "") +
       (missing.length ? ` · <span class="bad">${missing.length} not found</span>` : ` <span class="good">✓</span>`) + `</div>` +
       (missing.length ? `<div class="hint" style="margin-top:4px">Not found: ${missing.slice(0, 4).map(esc).join("; ")}${missing.length > 4 ? "…" : ""}<br>(they may have been rescheduled or removed from the program)</div>` : "") +
       `<div class="sync-row" style="margin-top:10px">
@@ -939,7 +1016,7 @@ document.getElementById("modal-content").addEventListener("change", e => {
   reader.readAsText(file);
 });
 
-let pendingImport = { found: [], missing: [] };
+let pendingImport = { found: [], missing: [], stars: [] };
 
 // A #s=... link means someone sent us their schedule
 function checkIncomingLink() {
@@ -947,7 +1024,9 @@ function checkIncomingLink() {
   if (!m) return;
   const ids = m[1].split(".").filter(Boolean);
   if (!ids.length) return;
-  pendingImport = resolvePicks(ids);
+  const sm = /[#&]p=([\w.]+)/.exec(location.hash);
+  const starIds = sm ? sm[1].split(".").filter(Boolean) : [];
+  pendingImport = resolvePicks(ids, starIds);
   if (!pendingImport.found.length) {
     toast("That sync link didn't match any sessions in this build.");
     return;
@@ -1062,6 +1141,7 @@ document.getElementById("btn-clear").addEventListener("click", () => {
   if (!selections.size) return;
   if (!confirm(`Uncheck all ${selections.size} selected sessions?`)) return;
   selections.clear();
+  starred.clear();
   persist();
   updateSelCount();
   renderList();
