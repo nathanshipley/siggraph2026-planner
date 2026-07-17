@@ -33,15 +33,17 @@ More of what it does:
 
 - **Browse & filter** all 1,008 sessions by day, program track, registration level (Full Conference
   Supporter / Full Conference / Experience / Discover), company, and free-text search.
-- **★ Can't Miss**: star the ones that really matter. They render bold and gold in both Browse and
-  the calendar, and the calendar warns you when a Can't Miss is caught in a time conflict.
+- **★ Starred**: star the ones that matter most — use it for whatever you like. Starred sessions
+  render solid and gold while everything else stays pale, so the calendar reads at a glance.
+  There's a **★ Starred only** filter on the calendar, and it warns when a starred session is
+  caught in a time conflict.
 - **Session groups**: Talks / Technical Papers / Educator's Forum / Art Papers blocks are linked to
   their individual presentations, exactly like the twirl-downs on the official schedule site.
 - **Export to Google Calendar**: one click generates an `.ics` of your picks with correct
   `America/Los_Angeles` times (import via Google Calendar → Settings → Import & export).
 - **Sync / Backup**: your picks live in one browser's localStorage — they don't follow a Chrome
   profile to another machine, and a downloaded copy and the web version are separate stores.
-  So the **Sync / Backup** button gives you a link that carries your picks and ★ Can't Miss marks
+  So the **Sync / Backup** button gives you a link that carries your picks and ★ stars
   (open it on the other device) and a `.json` backup you can import anywhere. Picks are keyed on
   each session's permanent URL, so they survive the schedule being rescheduled or retitled.
 - Light and dark mode.
